@@ -1,4 +1,19 @@
+# Compiled binaries (no extension on Linux)
 baseline1
 baseline2
-test
 baseline3
+baseline4
+baseline5
+testbench
+
+# Profiling outputs
+*.ncu-rep
+*.nsys-rep
+
+# Editor
+.vscode/
+.idea/
+
+# Build artifacts
+*.o
+*.obj
