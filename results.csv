@@ -1,0 +1,25 @@
+N,kernel,gflops,time_ms
+256,naive,916.6,0.037
+256,tiled,1137.8,0.029
+256,tiled with coarsening,638.8,0.053
+256,cuBLAS,1921.9,0.017
+512,naive,1255.8,0.214
+512,tiled,1598.0,0.168
+512,tiled with coarsening,1686.4,0.159
+512,cuBLAS,5655.7,0.047
+1024,naive,1421.9,1.510
+1024,tiled,1774.1,1.210
+1024,tiled with coarsening,1696.1,1.266
+1024,cuBLAS,12591.7,0.171
+2048,naive,1437.3,11.953
+2048,tiled,1812.3,9.479
+2048,tiled with coarsening,1894.4,9.069
+2048,cuBLAS,13882.1,1.238
+4096,naive,1258.9,109.177
+4096,tiled,1624.8,84.586
+4096,tiled with coarsening,1696.1,81.034
+4096,cuBLAS,13318.0,10.320
+8192,naive,1244.1,883.769
+8192,tiled,1610.9,682.544
+8192,tiled with coarsening,1614.0,681.240
+8192,cuBLAS,14338.1,76.685
