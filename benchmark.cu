@@ -13,6 +13,44 @@
     } \
 } while(0)
 
+#define bj 64
+#define bk 8
+#define bl 64
+#define colsize 8
+__global__ void baseline6 (const float* A, const float* B, float* C, int j, int k, int l){
+    __shared__ float Atile[bj][bk];
+    __shared__ float Btile[bk][bl];
+    const int t = threadIdx.x;
+    A += blockIdx.y*k*bj;
+    B += blockIdx.x*bl;
+    C += blockIdx.y*bj*l + blockIdx.x*bl;
+    float colresults[colsize] = {0.0};
+    for (int phase = 0; phase < k; phase+=bk){
+        if((phase+t%bk)<k && blockIdx.y*bj+t/bk<j)
+        Atile[t/bk][t%bk] = A[phase + t/bk*k + t%bk];
+        else Atile[t/bk][t%bk] = 0.0f;
+        if ((phase+t/bl)<k && t%bl+blockIdx.x*bl<l)
+        Btile[t/bl][t%bl] = B[phase*l + t/bl*l + t%bl];
+        else Btile[t/bl][t%bl] = 0.0f;
+        __syncthreads();
+
+        for (int dot = 0; dot<bk; dot++){
+            float btemp = Btile[dot][t%bl];
+            for (int cColId = 0; cColId<colsize; cColId++){
+                colresults[cColId] += btemp*Atile[t/bj*colsize+cColId][dot];
+            }
+        }
+        __syncthreads();
+    }
+
+    for (int cColId = 0; cColId<colsize; cColId++){
+        if (blockIdx.x*bl +t%bl<l && blockIdx.y*bj+t/bl*colsize+cColId<j)
+        C[(cColId+t/bl*colsize)*l+t%bl] = colresults[cColId];
+    }
+}
+
+
+
 __global__ void baseline4(float* A, float* B, float* C, int width) {
 int col = blockIdx.x*blockDim.x+threadIdx.x;
 int row = blockIdx.y*blockDim.y+threadIdx.y;
@@ -25,7 +63,7 @@ if (col<width && row<width){
 }    
 }
 
-__global__ void tiledGeneralWithCoarsening (float* A, float* B, float* C, int j, int k, int l){
+__global__ void baseline5coarse (float* A, float* B, float* C, int j, int k, int l){
     __shared__ float Atile [tile][tile];
     __shared__ float Btile [tile][tile];
     int by = blockIdx.y;
@@ -59,7 +97,7 @@ __global__ void tiledGeneralWithCoarsening (float* A, float* B, float* C, int j,
 }
 
 
-__global__ void tiledGeneral (float* A, float* B, float* C, int j, int k, int l){
+__global__ void baseline5 (float* A, float* B, float* C, int j, int k, int l){
     __shared__ float Atile [tile][tile];
     __shared__ float Btile [tile][tile];
     int by = blockIdx.y;
@@ -146,7 +184,7 @@ int main(){
             }
         } 
 
-        tiledGeneral<<<dimGridTiled,dimBlock>>> (dA, dB, dC, j, k, l);
+        baseline5<<<dimGridTiled,dimBlock>>> (dA, dB, dC, j, k, l);
         CUDA_CHECK(cudaMemcpy(C, dC, maxsize*maxsize*sizeof(float), cudaMemcpyDeviceToHost));
         for (size_t i = 0; i < (size_t)j * l; i++) {
             float diff = fabsf(C[i] - C_ref[i]);
@@ -157,7 +195,18 @@ int main(){
             }
         }
 
-        tiledGeneralWithCoarsening<<<dimGridCoarse,dimBlock>>> (dA, dB, dC, j, k, l);
+        baseline5coarse<<<dimGridCoarse,dimBlock>>> (dA, dB, dC, j, k, l);
+        CUDA_CHECK(cudaMemcpy(C, dC, maxsize*maxsize*sizeof(float), cudaMemcpyDeviceToHost));
+        for (size_t i = 0; i < (size_t)j * l; i++) {
+            float diff = fabsf(C[i] - C_ref[i]);
+            float rel = diff / (fabsf(C_ref[i]) + 1e-8f);  // +epsilon avoids div-by-zero
+            if (rel > 1e-3f && diff > 1e-4f) {
+                printf("Mismatch at %zu: kernel=%f ref=%f\n", i, C[i], C_ref[i]);
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        baseline6<<<dimGridCoarse,dimBlock>>> (dA, dB, dC, j, k, l);
         CUDA_CHECK(cudaMemcpy(C, dC, maxsize*maxsize*sizeof(float), cudaMemcpyDeviceToHost));
         for (size_t i = 0; i < (size_t)j * l; i++) {
             float diff = fabsf(C[i] - C_ref[i]);
@@ -192,11 +241,11 @@ int main(){
         fflush(stdout);
 
         for (int d=0; d<3; d++){
-            tiledGeneral<<<dimGridTiled,dimBlock>>> (dA, dB, dC, j, k, l);
+            baseline5<<<dimGridTiled,dimBlock>>> (dA, dB, dC, j, k, l);
         }
         cudaEventRecord(start);
         for (int d=0; d<repeat; d++){
-            tiledGeneral<<<dimGridTiled,dimBlock>>> (dA, dB, dC, j, k, l);
+            baseline5<<<dimGridTiled,dimBlock>>> (dA, dB, dC, j, k, l);
         }
         cudaEventRecord(end);
         cudaEventSynchronize(start);
@@ -211,11 +260,11 @@ int main(){
         fflush(stdout);
 
         for (int d=0; d<3; d++){
-            tiledGeneralWithCoarsening<<<dimGridCoarse,dimBlock>>> (dA, dB, dC, j, k, l);
+            baseline5coarse<<<dimGridCoarse,dimBlock>>> (dA, dB, dC, j, k, l);
         }
         cudaEventRecord(start);
         for (int d=0; d<repeat; d++){
-            tiledGeneralWithCoarsening<<<dimGridCoarse,dimBlock>>> (dA, dB, dC, j, k, l);
+            baseline5coarse<<<dimGridCoarse,dimBlock>>> (dA, dB, dC, j, k, l);
         }
         cudaEventRecord(end);
         cudaEventSynchronize(start);
@@ -227,6 +276,25 @@ int main(){
             time/(1000*repeat), 
             (repeat*flops*1e-6)/time, l);
         fprintf(csv, "%ld,%s,%.1f,%.3f\n", j, "tiled with coarsening", (repeat*flops*1e-6)/time, time/20);
+        fflush(stdout);
+
+        for (int d=0; d<3; d++){
+            baseline6<<<dim3(ceil(size/64.0f), ceil(size/64.0f)),512>>> (dA, dB, dC, j, k, l);
+        }
+        cudaEventRecord(start);
+        for (int d=0; d<repeat; d++){
+            baseline6<<<dim3(ceil(size/64.0f), ceil(size/64.0f)),512>>> (dA, dB, dC, j, k, l);
+        }
+        cudaEventRecord(end);
+        cudaEventSynchronize(start);
+        cudaEventSynchronize(end);
+        cudaEventElapsedTime(&time, start, end);
+        printf(
+            "Average time for 1d blocktiled kernel: (%7.6f) s, performance: (%7.1f) GFLOPS. size: "
+            "(%ld).\n",
+            time/(repeat*1000), 
+            (repeat*flops*1e-6)/time, l);
+        fprintf(csv, "%ld,%s,%.1f,%.3f\n", j, "1d blocktiled", (repeat*flops*1e-6)/time, time/20);
         fflush(stdout);
 
         for (int d=0; d<3; d++){

@@ -1,25 +1,31 @@
 N,kernel,gflops,time_ms
-256,naive,916.6,0.037
-256,tiled,1137.8,0.029
-256,tiled with coarsening,638.8,0.053
-256,cuBLAS,1921.9,0.017
-512,naive,1255.8,0.214
-512,tiled,1598.0,0.168
-512,tiled with coarsening,1686.4,0.159
-512,cuBLAS,5655.7,0.047
-1024,naive,1421.9,1.510
-1024,tiled,1774.1,1.210
-1024,tiled with coarsening,1696.1,1.266
-1024,cuBLAS,12591.7,0.171
-2048,naive,1437.3,11.953
-2048,tiled,1812.3,9.479
-2048,tiled with coarsening,1894.4,9.069
-2048,cuBLAS,13882.1,1.238
-4096,naive,1258.9,109.177
-4096,tiled,1624.8,84.586
-4096,tiled with coarsening,1696.1,81.034
-4096,cuBLAS,13318.0,10.320
-8192,naive,1244.1,883.769
-8192,tiled,1610.9,682.544
-8192,tiled with coarsening,1614.0,681.240
-8192,cuBLAS,14338.1,76.685
+256,naive,919.2,0.037
+256,tiled,891.6,0.038
+256,tiled with coarsening,639.4,0.052
+256,1d blocktiled,1354.0,0.025
+256,cuBLAS,2299.5,0.015
+512,naive,1260.0,0.213
+512,tiled,1422.4,0.189
+512,tiled with coarsening,1706.1,0.157
+512,1d blocktiled,4547.2,0.059
+512,cuBLAS,8497.4,0.032
+1024,naive,1417.6,1.515
+1024,tiled,1777.3,1.208
+1024,tiled with coarsening,1713.4,1.253
+1024,1d blocktiled,5042.4,0.426
+1024,cuBLAS,11752.0,0.183
+2048,naive,1368.3,12.555
+2048,tiled,1728.1,9.941
+2048,tiled with coarsening,1801.7,9.535
+2048,1d blocktiled,5284.2,3.251
+2048,cuBLAS,13572.2,1.266
+4096,naive,1234.0,111.375
+4096,tiled,1573.0,87.372
+4096,tiled with coarsening,1598.9,85.956
+4096,1d blocktiled,4741.0,28.989
+4096,cuBLAS,12034.3,11.421
+8192,naive,1172.1,938.037
+8192,tiled,1540.6,713.683
+8192,tiled with coarsening,1566.4,701.927
+8192,1d blocktiled,4647.5,236.583
+8192,cuBLAS,14152.4,77.691
