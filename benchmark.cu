@@ -129,8 +129,8 @@ __global__ void baseline5 (float* A, float* B, float* C, int j, int k, int l){
 #define blockl 128
 #define colsize 8
 #define rowsize 8
-__global__ void baseline7 (const float* A, const float* B, float* C, int j, int k, int l){
-    __shared__ float Atile[blockj][blockk];
+__global__ void __launch_bounds__ ((blockj*blockl)/(colsize*rowsize),1) baseline7 (const float* A, const float* B, float* C, int j, int k, int l){
+    __shared__ float Atile[blockj][blockk+1];
     __shared__ float Btile[blockk][blockl];
     A += blockIdx.y*k*blockj;
     B += blockIdx.x*blockl;

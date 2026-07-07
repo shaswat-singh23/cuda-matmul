@@ -16,13 +16,13 @@
 #define bj 64
 #define bk 8
 #define bl 64
-#define blockj 128
+#define blockj 64
 #define blockk 8
-#define blockl 128
+#define blockl 64
 #define colsize 8
 #define rowsize 8
 __global__ void blocktiling2d (const float* A, const float* B, float* C, int j, int k, int l){
-    __shared__ float Atile[blockj][blockk];
+    __shared__ float Atile[blockj][blockk+1];
     __shared__ float Btile[blockk][blockl];
     A += blockIdx.y*k*blockj;
     B += blockIdx.x*blockl;
@@ -72,8 +72,8 @@ __global__ void blocktiling2d (const float* A, const float* B, float* C, int j, 
         }
         __syncthreads();
     }
-    for (uint squarerow = 0; squarerow<colsize; squarerow++){
-        for (uint squarecol = 0; squarecol<rowsize; squarecol++){
+    for (uint squarecol = 0; squarecol<colsize; squarecol++){
+        for (uint squarerow = 0; squarerow<rowsize; squarerow++){
             if ((blockIdx.y*blockj + threadrow*colsize + squarerow) < j && (blockIdx.x*blockl + threadcol*rowsize + squarecol) < l)
             C[(threadrow*colsize + squarerow)*l + threadcol*rowsize + squarecol] = squareresults[squarerow*rowsize + squarecol];
         }
