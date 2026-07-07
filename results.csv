@@ -1,31 +1,37 @@
 N,kernel,gflops,time_ms
-256,naive,919.2,0.037
-256,tiled,891.6,0.038
-256,tiled with coarsening,639.4,0.052
-256,1d blocktiled,1354.0,0.025
-256,cuBLAS,2299.5,0.015
-512,naive,1260.0,0.213
-512,tiled,1422.4,0.189
-512,tiled with coarsening,1706.1,0.157
-512,1d blocktiled,4547.2,0.059
-512,cuBLAS,8497.4,0.032
-1024,naive,1417.6,1.515
-1024,tiled,1777.3,1.208
-1024,tiled with coarsening,1713.4,1.253
-1024,1d blocktiled,5042.4,0.426
-1024,cuBLAS,11752.0,0.183
-2048,naive,1368.3,12.555
-2048,tiled,1728.1,9.941
-2048,tiled with coarsening,1801.7,9.535
-2048,1d blocktiled,5284.2,3.251
-2048,cuBLAS,13572.2,1.266
-4096,naive,1234.0,111.375
-4096,tiled,1573.0,87.372
-4096,tiled with coarsening,1598.9,85.956
-4096,1d blocktiled,4741.0,28.989
-4096,cuBLAS,12034.3,11.421
-8192,naive,1172.1,938.037
-8192,tiled,1540.6,713.683
-8192,tiled with coarsening,1566.4,701.927
-8192,1d blocktiled,4647.5,236.583
-8192,cuBLAS,14152.4,77.691
+256,naive,912.8,0.037
+256,tiled,1139.9,0.029
+256,tiled with coarsening,630.2,0.053
+256,1d blocktiled,1316.0,0.025
+256,2d blocktiled,820.2,0.041
+256,cuBLAS,2259.9,0.015
+512,naive,1159.2,0.232
+512,tiled,1512.2,0.178
+512,tiled with coarsening,1589.2,0.169
+512,1d blocktiled,4555.1,0.059
+512,2d blocktiled,3628.3,0.074
+512,cuBLAS,5924.2,0.045
+1024,naive,1420.2,1.512
+1024,tiled,1780.6,1.206
+1024,tiled with coarsening,1721.7,1.247
+1024,1d blocktiled,5046.1,0.426
+1024,2d blocktiled,7823.7,0.274
+1024,cuBLAS,12629.6,0.170
+2048,naive,1354.7,12.682
+2048,tiled,1723.5,9.968
+2048,tiled with coarsening,1873.4,9.171
+2048,1d blocktiled,5524.0,3.110
+2048,2d blocktiled,9256.7,1.856
+2048,cuBLAS,13444.9,1.278
+4096,naive,1198.3,114.691
+4096,tiled,1568.3,87.638
+4096,tiled with coarsening,1642.2,83.692
+4096,1d blocktiled,4846.8,28.356
+4096,2d blocktiled,9428.7,14.577
+4096,cuBLAS,12277.5,11.194
+8192,naive,1178.2,933.183
+8192,tiled,1611.3,682.386
+8192,tiled with coarsening,1579.8,695.994
+8192,1d blocktiled,4595.7,239.250
+8192,2d blocktiled,8642.4,127.224
+8192,cuBLAS,13812.1,79.605
