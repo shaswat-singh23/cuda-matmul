@@ -1,12 +1,19 @@
-# Compiled binaries (no extension on Linux)
-baseline1
-baseline2
-baseline3
-baseline4
-baseline5
-testbench
+# Compiled binaries
+baseline*
+!baseline*.cu
+benchmark
+!benchmark.cu
+full_profile
+!full_profile.cu
+test_verify
+!test_verify.cu
+playground
+playground.cu
 
-# Profiling outputs
+# Packages
+*.deb
+
+# Profile reports
 *.ncu-rep
 *.nsys-rep
 

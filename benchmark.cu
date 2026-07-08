@@ -189,6 +189,99 @@ __global__ void __launch_bounds__ ((blockj*blockl)/(colsize*rowsize),1) baseline
     
 }
 
+__global__ void baseline8 (float* A, float* B, float* C, int j, int k, int l){
+    __shared__ float Atile[blockj*blockk];
+    __shared__ float Btile[blockk][blockl];
+    A += blockIdx.y*k*blockj;
+    B += blockIdx.x*blockl;
+    C += blockIdx.y*blockj*l + blockIdx.x*blockl;
+    const int t = threadIdx.x;
+
+    const uint threadcol = t % (blockl/rowsize);
+    const uint threadrow = t / (blockl/rowsize);
+    const uint rowA = t/(blockk/4);
+    const uint colA = t%(blockk/4);
+    const uint rowB = t/(blockl/4);
+    const uint colB = t%(blockl/4);
+    float squareresults[colsize*rowsize] = {0.0};
+
+    float cacheA[colsize] = {0.0};
+    float cacheB[rowsize] = {0.0};
+
+    for (int phase = 0; phase<k; phase += blockk){
+        int globrowa = blockIdx.y*blockj + rowA;
+        int globcola = phase + colA*4;
+        
+        if(globrowa<j && globcola + 3<k){
+            float4 temp = reinterpret_cast<float4*>(&A[rowA*k +colA*4])[0];
+            Atile[(colA*4 + 0) * blockj + rowA] = temp.x;
+            Atile[(colA*4 + 1) * blockj + rowA] = temp.y;
+            Atile[(colA*4 + 2) * blockj + rowA] = temp.z;
+            Atile[(colA*4 + 3) * blockj + rowA] = temp.w;
+        }
+        else if (globrowa<j){
+            for (int i=0; i<4; i++)
+                Atile[(colA*4 + i) * blockj + rowA] = (globcola + i<k) ? A[rowA*k + colA*4 + i]:0.0f;
+        }
+        else{
+            for (int i=0; i<4; i++) Atile[(colA*4 + i)*blockj + rowA]=0.0f;
+        }
+
+        int globrowb = phase+rowB;
+        int globcolb = blockIdx.x*blockl + colB*4;
+        if (globrowb<k && globcolb + 3 < l)
+        reinterpret_cast<float4 *>(&Btile[rowB][colB*4])[0] = 
+            reinterpret_cast<float4 *>(&B[rowB*l + colB*4])[0];
+        else if (globrowb<k){
+            for (int i =0; i<4; i++){
+                Btile[rowB][colB*4 + i] = (globcolb + i<l)?B[rowB*l + colB*4 + i]:0.0f;
+            }
+        } else{
+            for (int i =0; i<4; i++) Btile[rowB][colB*4+i]=0.0f;
+        }
+        //loading in values to smem
+        __syncthreads();
+        A += blockk;
+        B += blockk*l;
+        for (uint dotproduct = 0; dotproduct<blockk; dotproduct++){
+            for (uint aelem = 0; aelem<colsize; aelem++){
+                cacheA[aelem] = Atile[dotproduct*blockj + threadrow*colsize + aelem];
+            }
+            for (uint belem = 0; belem<rowsize; belem++){
+                cacheB[belem] = Btile[dotproduct][threadcol*rowsize+belem];
+            }
+            for (uint squarerow = 0; squarerow<colsize; squarerow++){
+                for (uint squarecol = 0; squarecol<rowsize; squarecol++){
+                    squareresults[squarerow*rowsize + squarecol] += cacheA[squarerow]*cacheB[squarecol];
+                }
+            }
+        }
+        __syncthreads();
+    }
+    for (uint squarerow = 0; squarerow<colsize; squarerow++){
+        for (uint squarecol = 0; squarecol<rowsize; squarecol+=4){
+            int globrow = threadrow*colsize + squarerow + blockIdx.y*blockj;
+            int globcol = threadcol*rowsize + squarecol + blockIdx.x*blockl;
+            if (globrow<j && (globcol+3)<l){
+                float4 temp;
+                temp.x = squareresults[squarerow*rowsize + squarecol];
+                temp.y = squareresults[squarerow*rowsize + squarecol + 1];
+                temp.z = squareresults[squarerow*rowsize + squarecol + 2];
+                temp.w = squareresults[squarerow*rowsize + squarecol + 3];
+
+                reinterpret_cast<float4 *>(&C[(threadrow*colsize+squarerow)*l + threadcol*rowsize + squarecol])[0] = temp;
+            }
+            else {
+            if (globrow<j)
+                for (int tempit=0; tempit<4; tempit++){ 
+                    if (globcol<l)
+                    C[(threadrow*colsize + squarerow)*l + threadcol*rowsize + squarecol+tempit] = squareresults[squarerow*rowsize + squarecol+tempit];}
+            }
+        }
+    }
+}
+
+
 int main(){
     FILE* csv = fopen("results.csv", "w");
     fprintf(csv, "N,kernel,gflops,time_ms\n");
@@ -212,7 +305,9 @@ int main(){
     CUDA_CHECK(cudaMalloc((void**)&dB, maxsize*maxsize*sizeof(float)));
     CUDA_CHECK(cudaMalloc((void**)&dC, maxsize*maxsize*sizeof(float)));
     CUDA_CHECK(cudaMalloc((void**)&dC_ref, maxsize*maxsize*sizeof(float)));
-    
+    cudaMemcpy(dA, A, maxsize*maxsize*sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(dB, B, maxsize*maxsize*sizeof(float), cudaMemcpyHostToDevice);
+
     cublasHandle_t handle;
     cublasCreate(&handle);
     const float alpha = 1.0f;
@@ -237,7 +332,8 @@ int main(){
         dim3 dimBlock(32,32);
         dim3 dimGridCoarse(ceil(l/(32.0f*coarse)),ceil(j/32.0f));
         dim3 dimGridTiled(ceil(l/32.0f),ceil(j/32.0f));
-        dim3 dimGrid2dblocktiling(ceil(l/64.0f),ceil(j/64.0f));
+        dim3 dimGrid2dblocktiling(ceil(l/128.0f),ceil(j/128.0f));
+        dim3 dimGrid1d(ceil(l/64.0f),ceil(j/64.0f));
 
         baseline4<<<dimGridTiled,dimBlock>>> (dA, dB, dC, j);
         CUDA_CHECK(cudaMemcpy(C, dC, maxsize*maxsize*sizeof(float), cudaMemcpyDeviceToHost));
@@ -245,10 +341,10 @@ int main(){
             float diff = fabsf(C[i] - C_ref[i]);
             float rel = diff / (fabsf(C_ref[i]) + 1e-8f);  // +epsilon avoids div-by-zero
             if (rel > 1e-3f && diff > 1e-4f) {
-                printf("Mismatch at %zu: kernel=%f ref=%f\n", i, C[i], C_ref[i]);
+                printf("4 Mismatch at %zu: kernel=%f ref=%f\n", i, C[i], C_ref[i]);
                 exit(EXIT_FAILURE);
             }
-        } 
+        }
 
         baseline5<<<dimGridTiled,dimBlock>>> (dA, dB, dC, j, k, l);
         CUDA_CHECK(cudaMemcpy(C, dC, maxsize*maxsize*sizeof(float), cudaMemcpyDeviceToHost));
@@ -256,7 +352,7 @@ int main(){
             float diff = fabsf(C[i] - C_ref[i]);
             float rel = diff / (fabsf(C_ref[i]) + 1e-8f);  // +epsilon avoids div-by-zero
             if (rel > 1e-3f && diff > 1e-4f) {
-                printf("Mismatch at %zu: kernel=%f ref=%f\n", i, C[i], C_ref[i]);
+                printf("5 Mismatch at %zu: kernel=%f ref=%f\n", i, C[i], C_ref[i]);
                 exit(EXIT_FAILURE);
             }
         }
@@ -267,29 +363,40 @@ int main(){
             float diff = fabsf(C[i] - C_ref[i]);
             float rel = diff / (fabsf(C_ref[i]) + 1e-8f);  // +epsilon avoids div-by-zero
             if (rel > 1e-3f && diff > 1e-4f) {
-                printf("Mismatch at %zu: kernel=%f ref=%f\n", i, C[i], C_ref[i]);
+                printf("5 coarsed Mismatch at %zu: kernel=%f ref=%f\n", i, C[i], C_ref[i]);
                 exit(EXIT_FAILURE);
             }
         }
 
-        baseline6<<<dimGridCoarse,dimBlock>>> (dA, dB, dC, j, k, l);
+        baseline6<<<dimGrid1d,512>>> (dA, dB, dC, j, k, l);
         CUDA_CHECK(cudaMemcpy(C, dC, maxsize*maxsize*sizeof(float), cudaMemcpyDeviceToHost));
         for (size_t i = 0; i < (size_t)j * l; i++) {
             float diff = fabsf(C[i] - C_ref[i]);
             float rel = diff / (fabsf(C_ref[i]) + 1e-8f);  // +epsilon avoids div-by-zero
             if (rel > 1e-3f && diff > 1e-4f) {
-                printf("Mismatch at %zu: kernel=%f ref=%f\n", i, C[i], C_ref[i]);
+                printf("6 Mismatch at %zu: kernel=%f ref=%f\n", i, C[i], C_ref[i]);
                 exit(EXIT_FAILURE);
             }
         }
 
-        baseline7<<<dimGrid2dblocktiling,64>>> (dA, dB, dC, j, k, l);
+        baseline7<<<dimGrid2dblocktiling,256>>> (dA, dB, dC, j, k, l);
         CUDA_CHECK(cudaMemcpy(C, dC, maxsize*maxsize*sizeof(float), cudaMemcpyDeviceToHost));
         for (size_t i = 0; i < (size_t)j * l; i++) {
             float diff = fabsf(C[i] - C_ref[i]);
             float rel = diff / (fabsf(C_ref[i]) + 1e-8f);  // +epsilon avoids div-by-zero
             if (rel > 1e-3f && diff > 1e-4f) {
-                printf("Mismatch at %zu: kernel=%f ref=%f\n", i, C[i], C_ref[i]);
+                printf("7 Mismatch at %zu: kernel=%f ref=%f\n", i, C[i], C_ref[i]);
+                exit(EXIT_FAILURE);
+            }
+        }
+
+        baseline8<<<dimGrid2dblocktiling,256>>> (dA, dB, dC, j, k, l);
+        CUDA_CHECK(cudaMemcpy(C, dC, maxsize*maxsize*sizeof(float), cudaMemcpyDeviceToHost));
+        for (size_t i = 0; i < (size_t)j * l; i++) {
+            float diff = fabsf(C[i] - C_ref[i]);
+            float rel = diff / (fabsf(C_ref[i]) + 1e-8f);  // +epsilon avoids div-by-zero
+            if (rel > 1e-3f && diff > 1e-4f) {
+                printf("8 Mismatch at %zu: kernel=%f ref=%f\n", i, C[i], C_ref[i]);
                 exit(EXIT_FAILURE);
             }
         }
@@ -356,11 +463,11 @@ int main(){
         fflush(stdout);
 
         for (int d=0; d<3; d++){
-            baseline6<<<dim3(ceil(size/64.0f), ceil(size/64.0f)),512>>> (dA, dB, dC, j, k, l);
+            baseline6<<<dimGrid1d,512>>> (dA, dB, dC, j, k, l);
         }
         cudaEventRecord(start);
         for (int d=0; d<repeat; d++){
-            baseline6<<<dim3(ceil(size/64.0f), ceil(size/64.0f)),512>>> (dA, dB, dC, j, k, l);
+            baseline6<<<dimGrid1d,512>>> (dA, dB, dC, j, k, l);
         }
         cudaEventRecord(end);
         cudaEventSynchronize(start);
@@ -375,11 +482,11 @@ int main(){
         fflush(stdout);
 
         for (int d=0; d<3; d++){
-            baseline7<<<dimGrid2dblocktiling,64>>> (dA, dB, dC, j, k, l);
+            baseline7<<<dimGrid2dblocktiling,256>>> (dA, dB, dC, j, k, l);
         }
         cudaEventRecord(start);
         for (int d=0; d<repeat; d++){
-            baseline7<<<dimGrid2dblocktiling,64>>> (dA, dB, dC, j, k, l);
+            baseline7<<<dimGrid2dblocktiling,256>>> (dA, dB, dC, j, k, l);
         }
         cudaEventRecord(end);
         cudaEventSynchronize(start);
@@ -391,6 +498,25 @@ int main(){
             time/(repeat*1000), 
             (repeat*flops*1e-6)/time, l);
         fprintf(csv, "%ld,%s,%.1f,%.3f\n", j, "2d blocktiled", (repeat*flops*1e-6)/time, time/20);
+        fflush(stdout);
+
+        for (int d=0; d<3; d++){
+            baseline8<<<dimGrid2dblocktiling,256>>> (dA, dB, dC, j, k, l);
+        }
+        cudaEventRecord(start);
+        for (int d=0; d<repeat; d++){
+            baseline8<<<dimGrid2dblocktiling,256>>> (dA, dB, dC, j, k, l);
+        }
+        cudaEventRecord(end);
+        cudaEventSynchronize(start);
+        cudaEventSynchronize(end);
+        cudaEventElapsedTime(&time, start, end);
+        printf(
+            "Average time for 2d blocktiled with vectorized kernel: (%7.6f) s, performance: (%7.1f) GFLOPS. size: "
+            "(%ld).\n",
+            time/(repeat*1000), 
+            (repeat*flops*1e-6)/time, l);
+        fprintf(csv, "%ld,%s,%.1f,%.3f\n", j, "vectorized", (repeat*flops*1e-6)/time, time/20);
         fflush(stdout);
 
         for (int d=0; d<3; d++){
