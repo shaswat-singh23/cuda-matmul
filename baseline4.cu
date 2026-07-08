@@ -2,6 +2,9 @@
 #include <chrono>
 #include <iostream>
 #include <stdlib.h>
+
+
+
 __global__ void matmulkernel(float* A, float* B, float* C, int width) {
 int col = blockIdx.x*blockDim.x+threadIdx.x;
 int row = blockIdx.y*blockDim.y+threadIdx.y;
@@ -22,9 +25,22 @@ void matmul(float*A,float*B,float*C,int size){
     cudaMalloc((void**)&C_d, bsize);
     cudaMemcpy(A_d, A, bsize, cudaMemcpyHostToDevice);
     cudaMemcpy(B_d, B, bsize, cudaMemcpyHostToDevice);
-    dim3 dimGrid(ceil(float(size)/16),ceil(float(size)/16));
-    dim3 dimBlock(16,16);
-    matmulkernel<<<dimGrid, dimBlock >>>(A_d,B_d,C_d,size);
+    dim3 dimGrid(ceil(float(size)/32),ceil(float(size)/32));
+    dim3 dimBlock(32,32);
+
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+    cudaEventRecord(start);
+    matmulkernel<<<dimGrid, dimBlock>>>(A_d, B_d, C_d, size);
+    cudaEventRecord(stop);
+    cudaEventSynchronize(stop);
+    float ms = 0;
+    cudaEventElapsedTime(&ms, start, stop);
+    printf("Kernel time: %.4f ms\n", ms);
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
+
     cudaMemcpy(C, C_d, bsize, cudaMemcpyDeviceToHost);
     cudaFree(A_d);
     cudaFree(B_d);
@@ -32,7 +48,7 @@ void matmul(float*A,float*B,float*C,int size){
 }
 
 int main() {
-    int N =1024;
+    int N =4096;
     float* A = new float[N*N];
     float* B = new float[N*N];
     float* C = new float[N*N];
@@ -42,12 +58,7 @@ int main() {
         B[i]=(float)rand()/RAND_MAX;
         C[i]=0.0f;
     } 
-    auto start = std::chrono::high_resolution_clock::now();
     matmul (A, B, C, N);
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end-start;
-    printf("Time: %.4f seconds\n", elapsed.count());
-
     delete[] A;
     delete[] B;
     delete[] C;
