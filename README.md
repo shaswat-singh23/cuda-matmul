@@ -1,6 +1,6 @@
 # CUDA SGEMM
 
-Progressive optimization of single-precision matrix multiplication in CUDA. Achieves up to 83.1% of cuBLAS SGEMM performance on RTX 4070 Laptop GPU through 6 GPU kernel implementations.
+Progressive optimization of single-precision matrix multiplication in CUDA. Achieves up to 83.1% of cuBLAS SGEMM performance on RTX 4070 Laptop GPU through five baselines (six kernels).
 
 ## Motivation
 
