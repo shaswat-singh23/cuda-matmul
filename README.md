@@ -9,7 +9,7 @@ Matrix multiplication is the foundation of most modern ML workloads and an effec
 ## Related Work
 
 Companion piece exploring matrix multiplication at the hardware architecture
-level: [FPGA TPU](https://github.com/shaswat-singh23/fpga-tpu) — an 8×8
+level: [FPGA TPU](https://github.com/shaswat-singh23/fpga-tpu) - an 8×8
 systolic array in SystemVerilog running end-to-end on Zynq-7020.
 
 ## Hardware and Environment
