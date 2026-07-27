@@ -4,7 +4,13 @@ Progressive optimization of single-precision matrix multiplication in CUDA. Achi
 
 ## Motivation
 
-Matrix multiplication is the foundation of most modern ML workloads and an effective benchmark for GPU optimization. I chose it as a means of learning how to write high-performance CUDA kernels, working through a progression from a naive CPU implementation to a GPU kernel competitive with cuBLAS by implementing each optimization stage myself.
+Matrix multiplication is the foundation of most modern ML workloads and an effective benchmark for GPU optimization. I chose it as a means of learning how to write high-performance CUDA kernels, working through a progression from a naive CPU implementation to a GPU kernel competitive with cuBLAS by implementing each optimization stage myself. Additionally, working on this project and implementing the various optimization strategies gave me a deeper understanding of GPU architecture and the general framework behind high performance computing, an area I wish to continue exploring.
+
+## Related Work
+
+Companion piece exploring matrix multiplication at the hardware architecture
+level: [FPGA TPU](https://github.com/shaswat-singh23/fpga-tpu) — an 8×8
+systolic array in SystemVerilog running end-to-end on Zynq-7020.
 
 ## Hardware and Environment
 
@@ -33,6 +39,8 @@ Matrix multiplication is the foundation of most modern ML workloads and an effec
 `./benchmark`
 Outputs results.csv with GFLOPS and timings across N ∈ {256, 512, 1024, 2048, 4096, 8192}.
 
+`./test_verify`
+
 ## Analysis
 
 ### Progression Summary
@@ -45,10 +53,10 @@ This section goes through my progression from a naive GPU baseline to the final 
 ### Kernel-by-Kernel Findings
 
 **Baseline 4 (Naive GPU):** 
-Each thread maps to one output element of C and computes its dot product by directly reading rows of A and columns of B from global memory. At N=4096, it produces ~1100 GFLOPS (12% of cuBLAS) on my system. I unknowingly implemented coalesced memory access from the start, which is where consecutive threads read consecutive addresses, allowing the GPU to merge 32 accesses per warp into single transfers. This yielded roughly a 4x speedup over the same algorithm without coalescing.
+Each thread maps to one output element of C and computes its dot product by directly reading rows of A and columns of B from global memory. At N=4096, it produces ~1100 GFLOPS (12% of cuBLAS) on my system. I unknowingly implemented coalesced memory access from the start, which is where consecutive threads read consecutive addresses, allowing the GPU to merge 32 accesses per warp into single transfers. This yielded roughly a 4x speedup over an uncoalesced implementation of the same algorithm.
 
 **Baseline 5 (Tiled + Coarsened):** 
-The naive kernel loads each element of A and B from global memory for every output element that needs it. Tiling reduces global memory traffic by loading blocks of A and B into shared memory (fast on-chip SRAM  with ~10x lower latency than global memory) so threads in a block can reuse the loaded data. My tiled kernel reached 1485 GFLOPS at N=4096 (16% of cuBLAS). The reason for the small improvement over baseline4 is modern GPU caching technologies already reduce redundant global memory accesses. Thread coarsening extends tiling by having each thread compute multiple output elements across the block dimension, which reduces redundant global memory loads across blocks because the same slice of A no longer needs to be loaded independently by each block computing outputs in that row-strip. In my measurements, this yielded only ~4% improvement over standard tiling because of the previously mentioned caching technology targeting this already.
+The naive kernel loads each element of A and B from global memory for every output element that needs it. Tiling reduces global memory traffic by loading blocks of A and B into shared memory (fast on-chip SRAM with ~10x lower latency than global memory) so threads in a block can reuse the loaded data. My tiled kernel reached 1485 GFLOPS at N=4096 (16% of cuBLAS). The reason for the small improvement over baseline4 is modern GPU caching technologies already reduce redundant global memory accesses. Thread coarsening extends tiling by having each thread compute multiple output elements across the block dimension, which reduces redundant global memory loads across blocks because the same slice of A no longer needs to be loaded independently by each block computing outputs in that row-strip. In my measurements, this yielded only ~4% improvement over standard tiling because of the previously mentioned caching technology targeting this already.
 
 **Baseline 6 (1D Block Tiling):** 
 Baseline 6 keeps the same shared memory tiling from baseline 5. Baseline 5's warp state statistics showed stall MIO throttle as the dominant warp stall (~20 cycles per instruction), indicating shared memory access was the primary bottleneck. To combat this, each thread now caches an element of B into a register per inner-loop iteration and computes 8 output elements that form a column instead of one. This cuts shared memory traffic to Btile by 8x, allowing the kernel to hit 3859 GFLOPS at N=4096 (41.7% of cuBLAS), a 2.5x jump over baseline 5. Stall MIO throttle dropped to ~8 cycles per instruction, a 2.5x reduction matching the throughput gain.
@@ -73,7 +81,7 @@ Ncu's memory workload analysis on baseline 7 flagged two related issues: only 4 
 
 ### The N=4096 Falloff Pattern
 
-Baselines 6-8 and cuBLAS all demonstrated a dip in GFLOPS from N=2048 to N=4096 as is visible on the graph. At N=2048, matrices A and B together occupy 32 MiB (2 × 2048² × 4 bytes), which fits into my RTX 4070 Mobile's L2 cache of 32 MiB. When the matrix size goes up, data needs to get fetched from global memory rather than the on-chip cache, contributing to the dip in performance. At N=8192, cuBLAS is able to recover, reflecting its use of more sophisticated memory pipelining techniques that hide DRAM latency in ways my baselines do not, which is why the cuBLAS-relative performance of baseline 8 goes from 83% at N=4096 to 68% at N=8192.
+Baselines 6-8 and cuBLAS all demonstrated a dip in GFLOPS from N=2048 to N=4096 as is visible on the graph. At N=2048, matrices A and B together occupy 32 MiB (2 × 2048² × 4 bytes), which fits into my RTX 4070 Laptop GPU's L2 cache of 32 MiB. When the matrix size goes up, data needs to get fetched from global memory rather than the on-chip cache, contributing to the dip in performance. At N=8192, cuBLAS is able to recover, reflecting its use of more sophisticated memory pipelining techniques that hide DRAM latency in ways my baselines do not. This explains why the cuBLAS-relative performance of baseline 8 goes from 83% at N=4096 to 68% at N=8192.
 
 ### Comparison to Simon Boehm's SGEMM Series
 
@@ -94,7 +102,7 @@ My baseline 7 (2D Blocktiling) underperforms Boehm's equivalent by ~11 percentag
 - Tile constants are hard coded as compile time constants, meaning kernels need retuning for other devices
 - Baseline 8 doesn't support arbitrary matrix dimensions due to float4 vectorization requiring k and l to be divisible by 4
 - Only tested on RTX 4070 Laptop GPU (Ada Lovelace, sm_89)
-- Early benchmark harness contained verification bugs that produced overstated performance numbers current harness verifies each kernel against cuBLAS before timing
+- Early benchmark harness contained verification bugs that produced overstated performance numbers; current harness verifies each kernel against cuBLAS before timing
 - More optimization possible via strategies discussed in baseline 8 section like double buffering etc.
 - CPU baselines 1-3 included but not benchmarked against GPU kernels, as comparison against compute types wasn't the point of this project
 - Tests done without compiler optimization to be representative of algorithmic changes, so might not portray real-world use
